@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       apiKey,
     })
 
-    // Increment usage counter (non-blocking to keep latency low)
+    // Count only platform-key generations toward the monthly limit
     await incrementUsage(userId)
 
     // Extract company from job title if provided as "Role at Company"
@@ -90,8 +90,8 @@ export async function POST(req: NextRequest) {
         createdAt: letter.createdAt,
       },
       usage: {
-        usageCount: usage.usageCount + 1,
-        remaining: usage.unlimited ? null : usage.remaining - 1,
+        usageCount: usage.unlimited ? usage.usageCount : usage.usageCount + 1,
+        remaining: usage.unlimited ? null : Math.max(0, usage.remaining - 1),
         unlimited: usage.unlimited,
       },
     })

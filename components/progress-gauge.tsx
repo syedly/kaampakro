@@ -1,5 +1,6 @@
 "use client"
 
+import { useId } from "react"
 import { cn } from "@/lib/utils"
 
 interface ProgressGaugeProps {
@@ -21,6 +22,7 @@ export function ProgressGauge({
   sublabel,
   className,
 }: ProgressGaugeProps) {
+  const gradId = useId()
   const radius = (size - strokeWidth) / 2
   const circumference = radius * 2 * Math.PI
   const percentage = Math.min((value / max) * 100, 100)
@@ -49,7 +51,7 @@ export function ProgressGauge({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="url(#gradient)"
+          stroke={`url(#${gradId})`}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={circumference}
@@ -57,7 +59,7 @@ export function ProgressGauge({
           className="transition-all duration-700 ease-out"
         />
         <defs>
-          <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="oklch(0.55 0.24 275)" />
             <stop offset="100%" stopColor="oklch(0.65 0.22 290)" />
           </linearGradient>

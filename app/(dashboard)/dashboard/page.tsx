@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ProgressGauge } from "@/components/progress-gauge"
 import { CreditsWidget } from "@/components/credits-widget"
 import { useAuth } from "@/hooks/useAuth"
+import { getProfileCompletion } from "@/lib/profileCompletion"
 
 interface Letter {
   _id: string
@@ -91,21 +92,12 @@ export default function DashboardPage() {
       .then((r) => r.json())
       .then(({ user: profile }) => {
         if (!profile) return
-        let score = 0
-        if (profile.name) score += 20
-        if (profile.email) score += 10
-        if (profile.phone) score += 10
-        if (profile.location) score += 10
-        if (profile.summary) score += 15
-        if (profile.skills?.length > 0) score += 15
-        if (profile.experience?.length > 0) score += 10
-        if (profile.education?.length > 0) score += 10
-        setProfilePct(score)
+        setProfilePct(getProfileCompletion(profile).percent)
       })
   }, [user])
 
   const creditsUsed = usage?.usageCount ?? 0
-  const creditsTotal = usage?.unlimited ? Infinity : (usage?.limit ?? 5)
+  const creditsTotal = usage?.limit ?? 5
 
   return (
     <div className="space-y-8 pt-16 lg:pt-0">
@@ -146,21 +138,19 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Credits Widget */}
+        {/* Credits / unlimited (own API key) */}
         <Card className="col-span-1 border-border bg-card shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Monthly Credits
+              {usage?.unlimited ? "AI generations" : "Monthly credits"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <CreditsWidget
               used={creditsUsed}
-              total={usage?.unlimited ? 5 : creditsTotal}
+              total={creditsTotal}
+              unlimited={usage?.unlimited ?? false}
             />
-            {usage?.unlimited && (
-              <p className="mt-2 text-xs font-medium text-green-600">Unlimited (own API key)</p>
-            )}
           </CardContent>
         </Card>
 

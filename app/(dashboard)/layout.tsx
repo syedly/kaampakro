@@ -1,5 +1,6 @@
 import { AppSidebar } from "@/components/app-sidebar"
 import { MobileNav } from "@/components/mobile-nav"
+import { ProfileWelcomeDialog } from "@/components/profile-welcome-dialog"
 
 export default function DashboardLayout({
   children,
@@ -8,6 +9,7 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="min-h-screen bg-background">
+      <ProfileWelcomeDialog />
       <AppSidebar />
       <MobileNav />
       <main className="lg:pl-64">

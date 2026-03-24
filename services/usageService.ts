@@ -1,6 +1,14 @@
 import User from "@/models/User"
 
-const MONTHLY_LIMIT = 5
+export const MONTHLY_LIMIT = 5
+
+function hasStoredOpenAiKey(apiKey: string | null | undefined): boolean {
+  return !!(apiKey && apiKey.startsWith("sk-"))
+}
+
+function sameCalendarMonth(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
+}
 
 /**
  * Check if user can generate. Returns remaining count.
@@ -15,16 +23,16 @@ export async function checkUsageLimit(userId: string): Promise<{
   const user = await User.findById(userId).select("apiKey usageCount resetDate")
   if (!user) throw new Error("User not found")
 
-  // Reset monthly counter if month has rolled over
+  // Reset monthly counter when the calendar month changes (vs. last reset)
   const now = new Date()
   const reset = new Date(user.resetDate)
-  if (now.getFullYear() > reset.getFullYear() || now.getMonth() > reset.getMonth()) {
+  if (!sameCalendarMonth(now, reset)) {
     user.usageCount = 0
     user.resetDate = now
     await user.save()
   }
 
-  const hasOwnKey = !!(user.apiKey && user.apiKey.startsWith("sk-"))
+  const hasOwnKey = hasStoredOpenAiKey(user.apiKey)
 
   if (hasOwnKey) {
     return { allowed: true, remaining: Infinity, unlimited: true, usageCount: user.usageCount }
@@ -40,9 +48,12 @@ export async function checkUsageLimit(userId: string): Promise<{
 }
 
 /**
- * Increment usage count after successful generation.
+ * Increment monthly usage only when the user relies on the platform OpenAI key
+ * (no own key stored). Own-key users are unlimited and do not consume quota.
  */
 export async function incrementUsage(userId: string): Promise<void> {
+  const user = await User.findById(userId).select("apiKey")
+  if (!user || hasStoredOpenAiKey(user.apiKey)) return
   await User.findByIdAndUpdate(userId, { $inc: { usageCount: 1 } })
 }
 
@@ -51,7 +62,7 @@ export async function incrementUsage(userId: string): Promise<void> {
  */
 export async function resolveApiKey(userId: string): Promise<string> {
   const user = await User.findById(userId).select("apiKey")
-  if (user?.apiKey && user.apiKey.startsWith("sk-")) {
+  if (user?.apiKey && hasStoredOpenAiKey(user.apiKey)) {
     return user.apiKey
   }
   const platformKey = process.env.OPENAI_API_KEY

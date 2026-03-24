@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PROFILE_PROMPT_SESSION_KEY } from "@/lib/profileCompletion"
 
 export default function SignupPage() {
   const router = useRouter()
@@ -39,6 +40,12 @@ export default function SignupPage() {
       if (!res.ok) {
         setError(data.error ?? "Registration failed")
         return
+      }
+
+      try {
+        sessionStorage.setItem(PROFILE_PROMPT_SESSION_KEY, "1")
+      } catch {
+        /* private mode */
       }
 
       router.push("/dashboard")
