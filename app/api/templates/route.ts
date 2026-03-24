@@ -42,7 +42,6 @@ export async function POST(req: NextRequest) {
     const description: string = sanitize(body.description ?? "")
 
     if (!name) return badRequest("Template name is required")
-    if (!content || content.length < 20) return badRequest("Template content is too short")
 
     await connectDB()
 
