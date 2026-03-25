@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import {
   FileText,
@@ -15,10 +15,21 @@ import {
   Wand2,
   CheckCircle2,
   Clock,
+  Pencil,
+  Save,
+  X,
+  BookmarkMinus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +38,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import { useUserId, userHeaders } from "@/hooks/useUserId"
 import { toast } from "sonner"
 
 interface Letter {
@@ -38,6 +48,11 @@ interface Letter {
   isDraft: boolean
   wordCount: number
   createdAt: string
+}
+
+interface FullLetter extends Letter {
+  generatedText: string
+  jobDescription?: string
 }
 
 function timeAgo(dateStr: string): string {
@@ -52,21 +67,28 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function LettersPage() {
-  const userId = useUserId()
   const [letters, setLetters] = useState<Letter[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "draft">("all")
 
+  // View/Edit modal state
+  const [viewOpen, setViewOpen] = useState(false)
+  const [viewLetter, setViewLetter] = useState<FullLetter | null>(null)
+  const [viewLoading, setViewLoading] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editText, setEditText] = useState("")
+  const [editTitle, setEditTitle] = useState("")
+  const [saving, setSaving] = useState(false)
+
   const fetchLetters = async () => {
-    if (!userId) return
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (filterStatus !== "all") params.set("status", filterStatus)
       if (searchQuery) params.set("q", searchQuery)
 
-      const res = await fetch(`/api/letters?${params}`, { headers: userHeaders(userId) })
+      const res = await fetch(`/api/letters?${params}`, { credentials: "include" })
       const data = await res.json()
       if (data.letters) setLetters(data.letters)
     } finally {
@@ -76,13 +98,95 @@ export default function LettersPage() {
 
   useEffect(() => {
     fetchLetters()
-  }, [userId, filterStatus, searchQuery])
+  }, [filterStatus, searchQuery])
+
+  const handleView = useCallback(async (id: string) => {
+    setViewOpen(true)
+    setViewLoading(true)
+    setEditing(false)
+    try {
+      const res = await fetch(`/api/letters/${id}`, { credentials: "include" })
+      const data = await res.json()
+      if (data.letter) {
+        setViewLetter(data.letter)
+        setEditText(data.letter.generatedText)
+        setEditTitle(data.letter.title)
+      }
+    } catch {
+      toast.error("Failed to load letter")
+      setViewOpen(false)
+    } finally {
+      setViewLoading(false)
+    }
+  }, [])
+
+  const handleSave = async (asDraft: boolean) => {
+    if (!viewLetter) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/letters/${viewLetter._id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle,
+          generatedText: editText,
+          isDraft: asDraft,
+        }),
+      })
+      const data = await res.json()
+      if (data.letter) {
+        setViewLetter(data.letter)
+        setEditing(false)
+        // Update the letter in the list
+        setLetters((prev) =>
+          prev.map((l) =>
+            l._id === data.letter._id
+              ? {
+                  ...l,
+                  title: data.letter.title,
+                  isDraft: data.letter.isDraft,
+                  wordCount: data.letter.wordCount,
+                }
+              : l
+          )
+        )
+        toast.success(asDraft ? "Saved as draft" : "Letter saved")
+      }
+    } catch {
+      toast.error("Failed to save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleDraft = async (id: string, currentIsDraft: boolean) => {
+    try {
+      const res = await fetch(`/api/letters/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isDraft: !currentIsDraft }),
+      })
+      const data = await res.json()
+      if (data.letter) {
+        setLetters((prev) =>
+          prev.map((l) =>
+            l._id === id ? { ...l, isDraft: data.letter.isDraft } : l
+          )
+        )
+        toast.success(data.letter.isDraft ? "Moved to drafts" : "Marked as completed")
+      }
+    } catch {
+      toast.error("Failed to update status")
+    }
+  }
 
   const handleDelete = async (id: string) => {
-    if (!userId) return
     try {
-      await fetch(`/api/letters/${id}`, { method: "DELETE", headers: userHeaders(userId) })
+      await fetch(`/api/letters/${id}`, { method: "DELETE", credentials: "include" })
       setLetters((prev) => prev.filter((l) => l._id !== id))
+      if (viewLetter?._id === id) setViewOpen(false)
       toast.success("Letter deleted")
     } catch {
       toast.error("Failed to delete letter")
@@ -90,9 +194,8 @@ export default function LettersPage() {
   }
 
   const handleCopy = async (id: string) => {
-    if (!userId) return
     try {
-      const res = await fetch(`/api/letters/${id}`, { headers: userHeaders(userId) })
+      const res = await fetch(`/api/letters/${id}`, { credentials: "include" })
       const data = await res.json()
       if (data.letter?.generatedText) {
         await navigator.clipboard.writeText(data.letter.generatedText)
@@ -104,9 +207,8 @@ export default function LettersPage() {
   }
 
   const handleDownload = async (id: string, title: string) => {
-    if (!userId) return
     try {
-      const res = await fetch(`/api/letters/${id}`, { headers: userHeaders(userId) })
+      const res = await fetch(`/api/letters/${id}`, { credentials: "include" })
       const data = await res.json()
       if (data.letter?.generatedText) {
         const blob = new Blob([data.letter.generatedText], { type: "text/plain" })
@@ -253,7 +355,7 @@ export default function LettersPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem className="gap-2">
+                      <DropdownMenuItem className="gap-2" onClick={() => handleView(letter._id)}>
                         <Eye className="h-4 w-4" /> View
                       </DropdownMenuItem>
                       <DropdownMenuItem className="gap-2" onClick={() => handleCopy(letter._id)}>
@@ -261,6 +363,21 @@ export default function LettersPage() {
                       </DropdownMenuItem>
                       <DropdownMenuItem className="gap-2" onClick={() => handleDownload(letter._id, letter.title)}>
                         <Download className="h-4 w-4" /> Download
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="gap-2"
+                        onClick={() => handleToggleDraft(letter._id, letter.isDraft)}
+                      >
+                        {letter.isDraft ? (
+                          <>
+                            <CheckCircle2 className="h-4 w-4" /> Mark Completed
+                          </>
+                        ) : (
+                          <>
+                            <BookmarkMinus className="h-4 w-4" /> Move to Draft
+                          </>
+                        )}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -317,6 +434,149 @@ export default function LettersPage() {
           ))}
         </div>
       )}
+
+      {/* View / Edit Letter Dialog */}
+      <Dialog open={viewOpen} onOpenChange={(open) => { setViewOpen(open); if (!open) setEditing(false) }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            {viewLoading ? (
+              <DialogTitle>Loading...</DialogTitle>
+            ) : viewLetter ? (
+              <div className="flex items-start justify-between gap-4 pr-6">
+                <div className="min-w-0 flex-1">
+                  {editing ? (
+                    <Input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="text-lg font-semibold"
+                    />
+                  ) : (
+                    <DialogTitle className="text-lg">{viewLetter.title}</DialogTitle>
+                  )}
+                  <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
+                    {viewLetter.company && <span>{viewLetter.company}</span>}
+                    {viewLetter.templateName && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                        {viewLetter.templateName}
+                      </span>
+                    )}
+                    <span
+                      className={cn(
+                        "flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                        !viewLetter.isDraft ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                      )}
+                    >
+                      {viewLetter.isDraft ? "Draft" : "Completed"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <DialogTitle>Letter not found</DialogTitle>
+            )}
+          </DialogHeader>
+
+          {viewLoading ? (
+            <div className="flex-1 flex items-center justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : viewLetter ? (
+            <>
+              <div className="flex-1 overflow-y-auto py-4">
+                {editing ? (
+                  <Textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    className="min-h-[400px] resize-none font-mono text-sm leading-relaxed"
+                  />
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                    {viewLetter.generatedText}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between border-t pt-4">
+                <p className="text-xs text-muted-foreground">
+                  {viewLetter.wordCount} words
+                </p>
+
+                <div className="flex gap-2">
+                  {editing ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditing(false)
+                          setEditText(viewLetter.generatedText)
+                          setEditTitle(viewLetter.title)
+                        }}
+                        disabled={saving}
+                      >
+                        <X className="mr-1 h-3.5 w-3.5" /> Cancel
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSave(true)}
+                        disabled={saving}
+                      >
+                        <BookmarkMinus className="mr-1 h-3.5 w-3.5" />
+                        {saving ? "Saving..." : "Save as Draft"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleSave(false)}
+                        disabled={saving}
+                        className="bg-gradient-to-r from-primary to-accent text-primary-foreground"
+                      >
+                        <Save className="mr-1 h-3.5 w-3.5" />
+                        {saving ? "Saving..." : "Save"}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          handleToggleDraft(viewLetter._id, viewLetter.isDraft)
+                          setViewLetter({ ...viewLetter, isDraft: !viewLetter.isDraft })
+                        }}
+                      >
+                        {viewLetter.isDraft ? (
+                          <>
+                            <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Mark Completed
+                          </>
+                        ) : (
+                          <>
+                            <BookmarkMinus className="mr-1 h-3.5 w-3.5" /> Move to Draft
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCopy(viewLetter._id)}
+                      >
+                        <Copy className="mr-1 h-3.5 w-3.5" /> Copy
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setEditing(true)}
+                        className="bg-gradient-to-r from-primary to-accent text-primary-foreground"
+                      >
+                        <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

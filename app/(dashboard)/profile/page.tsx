@@ -156,7 +156,7 @@ export default function ProfilePage() {
           <p className="mt-1 text-muted-foreground">Complete your profile to generate better cover letters</p>
         </div>
         <div className="flex items-center gap-4">
-          <ProgressGauge value={progress} max={100} size={72} strokeWidth={7} label="Complete" sublabel={progress < 100 ? "Fill more fields" : "All done!"} />
+          {/* <ProgressGauge value={progress} max={100} size={72} strokeWidth={7} label="Complete" sublabel={progress < 100 ? "Fill more fields" : "All done!"} /> */}
           <Button onClick={handleSave} disabled={saving} className="gap-2 bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-md shadow-primary/20">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {saving ? "Saving..." : "Save Changes"}

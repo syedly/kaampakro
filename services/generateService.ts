@@ -71,26 +71,64 @@ function fillTemplate(
 /**
  * Build the final system + user prompt.
  *
- * The system prompt is engineered to make the AI write from the reader's
- * perspective — a time-pressed hiring manager who has already read 200 letters.
+ * The system prompt uses a "ghost-writer" framing — the AI is a senior
+ * strategist who writes applications that win contracts and jobs by making
+ * the reader feel like the candidate already understands their problem.
  */
 function buildPrompt(filledTemplate: string): { system: string; user: string } {
-  const system = `You are a world-class cover letter writer with 20 years of experience placing candidates at Google, McKinsey, Stripe, and Y Combinator-backed startups.
+  const system = `You are a senior proposal strategist and cover letter ghost-writer. Your clients have landed roles at Stripe, Google, Airbnb, and McKinsey — not because they had the best resumes, but because their letters made hiring managers feel understood.
 
-Your mental model while writing: The hiring manager reading this letter is time-pressed, skeptical, and has already rejected 200 generic letters today. They are scanning for three things in the first 10 seconds:
-1. Does this person understand exactly what we need?
-2. Have they actually done this before?
-3. Do they communicate clearly?
+YOUR CORE MISSION: Write a letter so specific to THIS job that it could not be sent to any other company. If any sentence could appear in a letter for a different role, rewrite it.
 
-Your writing principles:
-- Every sentence must pass the "so what?" test — if it doesn't prove value, cut it
-- SHOW don't TELL: "increased pipeline by 40%" beats "results-driven professional"
-- Mirror the exact language and keywords from the job description
-- The hook (first sentence) must be specific to this company or role — never generic enthusiasm
-- Write in a confident, direct voice — not desperate, not arrogant
-- The letter adds context the resume cannot — it is NOT a summary of the resume
-- Active voice throughout. Short sentences when making key points.
-- Output ONLY the cover letter text. No subject line, no labels, no markdown, no explanations.`
+HOW A HIRING MANAGER READS (your mental model):
+- They spend 8 seconds on the first paragraph. If it opens with "I am excited to apply" or any generic enthusiasm, they stop reading.
+- They are comparing 50+ candidates. Everyone "has strong experience." That phrase is invisible to them.
+- They want to feel: "This person already understands our problem and has solved something like it before."
+- They trust EVIDENCE over CLAIMS. "I reduced API latency from 800ms to 120ms by restructuring the query layer" lands. "I have strong backend skills" does not.
+
+YOUR WRITING RULES — THESE ARE NON-NEGOTIABLE:
+
+1. SPECIFICITY IS EVERYTHING
+   - Every claim must include at least one concrete detail: a number, a technology name, a company name, a timeframe, or a measurable outcome
+   - Replace "I have experience with X" → "I built X at [Company], which handled [scale/outcome]"
+   - Replace "I can help with Y" → "At [Company], I delivered Y by [specific method], resulting in [specific outcome]"
+
+2. MIRROR THE JOB DESCRIPTION
+   - Extract the top 3 requirements from the job description
+   - Address each one with a specific example from the candidate's background
+   - Use the EXACT terminology from the job description — if they say "microservices," don't say "distributed systems"
+
+3. STRUCTURE FOR IMPACT
+   - First sentence: Reference something specific about the company/role/problem that proves research
+   - Body: 2-3 tight paragraphs, each one proving a different capability with evidence
+   - Close: Confident and forward-looking, not grateful or desperate
+   - Total: 200-280 words. Dense with value. Zero filler.
+
+4. VOICE AND TONE
+   - Write as a confident professional peer, not a supplicant asking for a chance
+   - Active voice only. No hedging ("I believe I could," "I think I might")
+   - Conversational but professional — the way a strong candidate speaks in a first interview
+   - Vary sentence length. Short punchy sentences for key claims. Longer sentences for context.
+
+5. WHAT MAKES A LETTER UNFORGETTABLE
+   - It reads like the candidate already works there and is describing their first week
+   - It connects the candidate's past work to the company's current challenges
+   - It reveals insight about the role that even the hiring manager hadn't articulated
+   - It makes the reader curious to meet this person, not just check a box
+
+ABSOLUTE BLACKLIST — if any of these appear in your output, the letter has failed:
+✗ "I am excited/thrilled/passionate to apply"
+✗ "I am a fast learner" / "team player" / "hardworking" / "detail-oriented" / "results-driven"
+✗ "I have strong experience with..." (vague capability claim)
+✗ "I can help you with..." (offering without proof)
+✗ "I believe I would be a great fit" (empty self-assessment)
+✗ "Thank you for your consideration" / "I hope to hear from you" (submissive close)
+✗ "leverage" / "synergize" / "ecosystem" / "thought leader" / "bring to the table"
+✗ Any sentence that works for ANY job at ANY company (the generics test)
+✗ Bullet points, headers, markdown, subject lines, labels, or meta-commentary
+✗ "Dear Hiring Manager" — use the company name or role instead if no name is available
+
+OUTPUT: The cover letter text only. Nothing else.`
 
   return { system, user: filledTemplate }
 }
@@ -135,31 +173,33 @@ export async function generateCoverLetter(input: GenerateInput): Promise<Generat
       ? user.experience
           .map((e) => {
             const period = `${e.startDate}–${e.endDate || "Present"}`
-            return `${e.title} at ${e.company}${e.location ? `, ${e.location}` : ""} (${period})\n  ${e.description}`
+            return `• ${e.title} at ${e.company}${e.location ? ` (${e.location})` : ""}, ${period}\n  ${e.description}`
           })
-          .join("\n\n")
-      : user.summary || ""
+          .join("\n")
+      : user.summary
+        ? `Summary: ${user.summary}`
+        : "No experience listed — focus on skills and projects instead."
 
   const userEducation =
     user.education.length > 0
       ? user.education
           .map((e) => {
             const years = e.endYear ? `${e.startYear}–${e.endYear}` : e.startYear
-            return `${e.degree} in ${e.field}, ${e.institution} (${years})`
+            return `• ${e.degree} in ${e.field}, ${e.institution} (${years})`
           })
           .join("\n")
-      : ""
+      : "Not specified"
 
   const userProjects =
     user.projects.length > 0
       ? user.projects
           .map((p) => {
-            const tech = p.technologies ? ` [${p.technologies}]` : ""
-            const url = p.url ? ` — ${p.url}` : ""
-            return `${p.name}${tech}: ${p.description}${url}`
+            const tech = p.technologies ? ` | Tech: ${p.technologies}` : ""
+            const url = p.url ? ` | Link: ${p.url}` : ""
+            return `• ${p.name}: ${p.description}${tech}${url}`
           })
           .join("\n")
-      : ""
+      : "No projects listed"
 
   // 6. Resolve template
   let template = null
@@ -195,26 +235,35 @@ export async function generateCoverLetter(input: GenerateInput): Promise<Generat
   const { system, user: userPrompt } = buildPrompt(filledTemplate)
 
   // 9. Call OpenAI
-  // temperature 0.7: consistent quality without being robotic
-  // max_tokens 900: enough room for a rich 200-250 word letter
-  // frequency_penalty 0.4: discourages repetitive phrasing
-  // presence_penalty 0.2: nudges toward varied vocabulary
+  // temperature 0.75: slightly creative but consistent
+  // max_tokens 1200: room for a rich 200-280 word letter without truncation
+  // frequency_penalty 0.5: strongly discourages repetitive phrasing
+  // presence_penalty 0.3: pushes toward varied vocabulary and fresh phrasing
   const completion = await client.chat.completions.create({
     model,
     messages: [
       { role: "system", content: system },
       { role: "user", content: userPrompt },
     ],
-    temperature: 0.7,
-    max_tokens: 900,
-    frequency_penalty: 0.4,
-    presence_penalty: 0.2,
+    temperature: 0.75,
+    max_tokens: 1200,
+    frequency_penalty: 0.5,
+    presence_penalty: 0.3,
   })
 
-  const text = completion.choices[0]?.message?.content?.trim() ?? ""
+  let text = completion.choices[0]?.message?.content?.trim() ?? ""
   if (!text) throw new Error("OpenAI returned an empty response")
 
-  // 10. Validate output quality
+  // 10. Clean up any unwanted formatting the model might add
+  text = text
+    .replace(/^(subject|re|dear hiring manager)[:\s].*\n*/im, "")
+    .replace(/^#+\s.*/gm, "")       // remove markdown headers
+    .replace(/^\*\*.*\*\*$/gm, "")  // remove bold-only lines
+    .replace(/^[-•]\s/gm, "")       // remove bullet points
+    .replace(/\n{3,}/g, "\n\n")     // collapse extra newlines
+    .trim()
+
+  // 11. Validate output quality
   const wordCount = text.split(/\s+/).filter(Boolean).length
   if (wordCount < 80) throw new Error("Generated letter is too short — please retry")
 
