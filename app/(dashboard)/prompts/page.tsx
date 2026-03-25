@@ -131,7 +131,7 @@ export default function PromptsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Prompt Template</Label>
-                <Textarea value={createForm.content} onChange={e => setCreateForm({ ...createForm, content: e.target.value })} placeholder={`Write your AI instructions here.\n\nAvailable placeholders:\n{{user_name}}        — candidate full name\n{{company_name}}     — company from job title\n{{job_title}}        — role being applied for\n{{job_description}}  — full job description\n{{user_skills}}      — candidate skills\n{{user_experience}}  — work history\n{{user_education}}   — education background\n{{user_projects}}    — portfolio / side projects`} className="min-h-[160px] resize-none font-mono text-sm" />
+                <Textarea value={createForm.content} onChange={e => setCreateForm({ ...createForm, content: e.target.value })} placeholder={`Write your AI instructions here.\n\nAvailable placeholders:\n{{user_name}}        - candidate full name\n{{company_name}}     - company from job title\n{{job_title}}        - role being applied for\n{{job_description}}  - full job description\n{{user_skills}}      - candidate skills\n{{user_experience}}  - work history\n{{user_education}}   - education background\n{{user_projects}}    - portfolio / side projects`} className="min-h-[160px] resize-none font-mono text-sm" />
               </div>
             </div>
             <DialogFooter>

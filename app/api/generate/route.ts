@@ -33,12 +33,10 @@ export async function POST(req: NextRequest) {
 
     await connectDB()
 
-    // Seed default templates if none exist
-    const templateCount = await Template.countDocuments({ isDefault: true })
-    if (templateCount === 0) {
-      // @ts-expect-error statics
-      await Template.seedDefaults()
-    }
+    // Refresh default templates on each request so prompt improvements reach
+    // existing databases instead of staying stuck on older defaults.
+    // @ts-expect-error statics
+    await Template.seedDefaults()
 
     // Run the 1st-of-month reset for this user (no-op on any other day)
     await resetMonthlyLimits(userId)
@@ -46,7 +44,7 @@ export async function POST(req: NextRequest) {
     // Check usage limit (also performs lazy calendar-month reset as a fallback)
     const usage = await checkUsageLimit(userId)
 
-    // Quota exhausted — only applies to platform-key (non-BYOK) users
+    // Quota exhausted - only applies to platform-key (non-BYOK) users
     if (!usage.allowed) {
       return NextResponse.json(
         {
@@ -71,7 +69,7 @@ export async function POST(req: NextRequest) {
       modelChoice,
     })
 
-    // isByok comes directly from generateCoverLetter — authoritative source of truth.
+    // isByok comes directly from generateCoverLetter - authoritative source of truth.
     const isByok = result.isByok
 
     // Increment platform-key quota only; BYOK users are skipped inside incrementUsage.

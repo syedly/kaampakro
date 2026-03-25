@@ -11,12 +11,10 @@ export async function GET(req: NextRequest) {
 
     await connectDB()
 
-    // Seed defaults if empty
-    const defaultCount = await Template.countDocuments({ isDefault: true })
-    if (defaultCount === 0) {
-      // @ts-expect-error statics
-      await Template.seedDefaults()
-    }
+    // Refresh defaults so the templates screen always reflects the latest
+    // built-in proposal structure.
+    // @ts-expect-error statics
+    await Template.seedDefaults()
 
     const templates = await Template.find({
       $or: [{ isDefault: true }, { userId }],
