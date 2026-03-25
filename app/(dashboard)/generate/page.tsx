@@ -1,23 +1,43 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Wand2, Copy, Check, Download, RotateCcw, Sparkles, Save, AlertCircle } from "lucide-react"
+import { Wand2, Copy, Check, Download, RotateCcw, Sparkles, Save, AlertCircle, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
 interface Template { _id: string; name: string; style: string; isDefault: boolean }
 interface UsageInfo { usageCount: number; remaining: number | null; limit: number; unlimited: boolean }
 
+interface ModelOption {
+  value: string
+  label: string
+  description: string
+  premium: boolean
+}
+
+const MODEL_OPTIONS: ModelOption[] = [
+  { value: "gpt-4o",        label: "GPT-4o",          description: "Best quality · Fast",           premium: false },
+  { value: "gpt-4o-mini",   label: "GPT-4o Mini",     description: "Fast · Cost-efficient",         premium: false },
+  { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo",   description: "Lightweight · Quick",           premium: false },
+  { value: "gpt-4",         label: "GPT-4",           description: "High accuracy · Slower",        premium: true  },
+  { value: "gpt-4-turbo",   label: "GPT-4 Turbo",     description: "GPT-4 speed boost",             premium: true  },
+  { value: "o1",            label: "o1",               description: "Deep reasoning",                premium: true  },
+  { value: "o1-preview",    label: "o1 Preview",       description: "Advanced reasoning · Preview",  premium: true  },
+  { value: "o1-mini",       label: "o1 Mini",          description: "Compact reasoning model",       premium: true  },
+]
+
 export default function GeneratePage() {
   const [jobTitle, setJobTitle] = useState("")
   const [jobDescription, setJobDescription] = useState("")
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("")
+  const [selectedModel, setSelectedModel] = useState("gpt-4o")
   const [templates, setTemplates] = useState<Template[]>([])
   const [generatedLetter, setGeneratedLetter] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
@@ -50,7 +70,13 @@ export default function GeneratePage() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobTitle: jobTitle.trim(), jobDescription: jobDescription.trim(), templateId: selectedTemplateId || undefined, saveDraft: false }),
+        body: JSON.stringify({
+          jobTitle: jobTitle.trim(),
+          jobDescription: jobDescription.trim(),
+          templateId: selectedTemplateId || undefined,
+          modelChoice: selectedModel,
+          saveDraft: false,
+        }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? "Generation failed. Please try again."); return }
@@ -89,6 +115,9 @@ export default function GeneratePage() {
   const limitReached = !usage?.unlimited && (usage?.remaining ?? 1) === 0
   const canGenerate = jobTitle.trim().length > 0 && jobDescription.trim().length >= 20 && !isGenerating && !limitReached
 
+  const selectedModelOption = MODEL_OPTIONS.find(m => m.value === selectedModel)
+  const isPremiumModelSelected = selectedModelOption?.premium ?? false
+
   return (
     <div className="space-y-6 pt-16 lg:pt-0">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -116,6 +145,7 @@ export default function GeneratePage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
+          {/* Job Details */}
           <Card className="border-border bg-card shadow-sm">
             <CardHeader><CardTitle className="text-foreground">Job Details</CardTitle></CardHeader>
             <CardContent className="space-y-4">
@@ -131,21 +161,82 @@ export default function GeneratePage() {
             </CardContent>
           </Card>
 
+          {/* Generation Settings — template + model in one card */}
           <Card className="border-border bg-card shadow-sm">
-            <CardHeader><CardTitle className="text-foreground">Style Template</CardTitle></CardHeader>
-            <CardContent>
-              {templates.length > 0 ? (
-                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                  <SelectTrigger className="bg-background"><SelectValue placeholder="Select a template..." /></SelectTrigger>
+            <CardHeader><CardTitle className="text-foreground">Generation Settings</CardTitle></CardHeader>
+            <CardContent className="space-y-5">
+
+              {/* Style Template */}
+              <div className="space-y-2">
+                <Label>Style Template</Label>
+                {templates.length > 0 ? (
+                  <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                    <SelectTrigger className="bg-background"><SelectValue placeholder="Select a template..." /></SelectTrigger>
+                    <SelectContent>
+                      {templates.map(t => (
+                        <SelectItem key={t._id} value={t._id}>{t.name}{t.isDefault ? " (Default)" : ""}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Loading templates...</p>
+                )}
+              </div>
+
+              {/* AI Model */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label>AI Model</Label>
+                  {isPremiumModelSelected && !usage?.unlimited && (
+                    <Badge variant="destructive" className="gap-1 text-xs px-1.5 py-0">
+                      <Lock className="h-3 w-3" /> Requires own API key
+                    </Badge>
+                  )}
+                  {isPremiumModelSelected && usage?.unlimited && (
+                    <Badge variant="secondary" className="text-xs px-1.5 py-0">Premium</Badge>
+                  )}
+                </div>
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    {templates.map(t => (
-                      <SelectItem key={t._id} value={t._id}>{t.name}{t.isDefault ? " (Default)" : ""}</SelectItem>
+                    {/* Standard models */}
+                    {MODEL_OPTIONS.filter(m => !m.premium).map(m => (
+                      <SelectItem key={m.value} value={m.value}>
+                        <div className="flex items-center justify-between gap-6 w-full">
+                          <span>{m.label}</span>
+                          <span className="text-xs text-muted-foreground">{m.description}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {/* Premium models */}
+                    {MODEL_OPTIONS.filter(m => m.premium).map(m => (
+                      <SelectItem
+                        key={m.value}
+                        value={m.value}
+                        disabled={!usage?.unlimited}
+                        className={cn(!usage?.unlimited && "opacity-50 cursor-not-allowed")}
+                      >
+                        <div className="flex items-center justify-between gap-6 w-full">
+                          <span className="flex items-center gap-1.5">
+                            {!usage?.unlimited && <Lock className="h-3 w-3 text-muted-foreground" />}
+                            {m.label}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{m.description}</span>
+                        </div>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              ) : (
-                <p className="text-sm text-muted-foreground">Loading templates...</p>
-              )}
+                {!usage?.unlimited && (
+                  <p className="text-xs text-muted-foreground">
+                    Premium models (GPT-4, o1) require your own OpenAI API key. Add it in{" "}
+                    <a href="/profile" className="underline underline-offset-2 hover:text-foreground">Profile settings</a>.
+                  </p>
+                )}
+              </div>
+
             </CardContent>
           </Card>
 
@@ -160,6 +251,7 @@ export default function GeneratePage() {
           </Button>
         </div>
 
+        {/* Preview panel — unchanged */}
         <Card className="flex flex-col border-border bg-card shadow-sm lg:h-[calc(100vh-200px)]">
           <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
             <CardTitle className="text-foreground">Preview</CardTitle>

@@ -11,19 +11,52 @@ function sameCalendarMonth(a: Date, b: Date): boolean {
 }
 
 /**
- * Check if user can generate. Returns remaining count.
- * If user has a valid API key, they have unlimited generations.
+ * Reset monthly usage counter for a user if today is the 1st of the month
+ * and the stored resetDate is from a previous month.
+ *
+ * Safe to call on every request — it is a no-op unless both conditions hold.
+ */
+export async function resetMonthlyLimits(userId: string): Promise<void> {
+  const now = new Date()
+
+  // Only act on the 1st of the month
+  if (now.getDate() !== 1) return
+
+  const user = await User.findById(userId).select("usageCount resetDate")
+  if (!user) return
+
+  // Already reset this month — skip
+  if (sameCalendarMonth(now, new Date(user.resetDate))) return
+
+  user.usageCount = 0
+  user.resetDate = now
+  await user.save()
+}
+
+/**
+ * Check if the user is allowed to generate.
+ *
+ * Side-effect: lazily resets the monthly counter whenever the calendar month
+ * has rolled over since the last reset (covers cases where the 1st was missed).
+ *
+ * Returns:
+ *   - allowed   – whether the user may proceed
+ *   - remaining – generations left (Infinity for BYOK users)
+ *   - unlimited – true when user has their own API key (BYOK)
+ *   - isByok    – alias for `unlimited`, explicit flag used downstream
+ *   - usageCount – current counter value (after any reset)
  */
 export async function checkUsageLimit(userId: string): Promise<{
   allowed: boolean
   remaining: number
   unlimited: boolean
+  isByok: boolean
   usageCount: number
 }> {
   const user = await User.findById(userId).select("apiKey usageCount resetDate")
   if (!user) throw new Error("User not found")
 
-  // Reset monthly counter when the calendar month changes (vs. last reset)
+  // Lazy monthly reset: fires whenever the calendar month has changed
   const now = new Date()
   const reset = new Date(user.resetDate)
   if (!sameCalendarMonth(now, reset)) {
@@ -32,10 +65,16 @@ export async function checkUsageLimit(userId: string): Promise<{
     await user.save()
   }
 
-  const hasOwnKey = hasStoredOpenAiKey(user.apiKey)
+  const isByok = hasStoredOpenAiKey(user.apiKey)
 
-  if (hasOwnKey) {
-    return { allowed: true, remaining: Infinity, unlimited: true, usageCount: user.usageCount }
+  if (isByok) {
+    return {
+      allowed: true,
+      remaining: Infinity,
+      unlimited: true,
+      isByok: true,
+      usageCount: user.usageCount,
+    }
   }
 
   const remaining = MONTHLY_LIMIT - user.usageCount
@@ -43,13 +82,14 @@ export async function checkUsageLimit(userId: string): Promise<{
     allowed: remaining > 0,
     remaining: Math.max(0, remaining),
     unlimited: false,
+    isByok: false,
     usageCount: user.usageCount,
   }
 }
 
 /**
- * Increment monthly usage only when the user relies on the platform OpenAI key
- * (no own key stored). Own-key users are unlimited and do not consume quota.
+ * Increment monthly usage — only when the user relies on the platform key.
+ * Own-key (BYOK) users are unlimited and must not consume quota.
  */
 export async function incrementUsage(userId: string): Promise<void> {
   const user = await User.findById(userId).select("apiKey")
@@ -58,7 +98,8 @@ export async function incrementUsage(userId: string): Promise<void> {
 }
 
 /**
- * Get the user's OpenAI API key (their own or the platform key).
+ * Resolve the effective OpenAI API key for this user.
+ * Returns the user's own key if valid, otherwise the platform system key.
  */
 export async function resolveApiKey(userId: string): Promise<string> {
   const user = await User.findById(userId).select("apiKey")
